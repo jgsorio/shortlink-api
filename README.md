@@ -1,66 +1,288 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Shortlink API
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+API REST para encurtamento de URLs construída com [Laravel 10](https://laravel.com) e autenticação via [Laravel Sanctum](https://laravel.com/docs/10.x/sanctum). Usuários autenticados podem criar, listar e desativar shortlinks; qualquer visitante pode acessar uma URL curta e ser redirecionado para o destino original, com contagem automática de cliques.
 
-## About Laravel
+[![PHP](https://img.shields.io/badge/PHP-%5E8.1-777bb4)](https://www.php.net/)
+[![Laravel](https://img.shields.io/badge/Laravel-%5E10.10-ff2d20)](https://laravel.com)
+[![License](https://img.shields.io/badge/license-MIT-blue)](#licença)
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Sumário
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+- [Funcionalidades](#funcionalidades)
+- [Stack](#stack)
+- [Arquitetura e estrutura do projeto](#arquitetura-e-estrutura-do-projeto)
+- [Modelo de dados](#modelo-de-dados)
+- [Pré-requisitos](#pré-requisitos)
+- [Instalação](#instalação)
+- [Variáveis de ambiente](#variáveis-de-ambiente)
+- [Executando a aplicação](#executando-a-aplicação)
+- [Documentação da API](#documentação-da-api)
+- [Testes](#testes)
+- [Qualidade de código](#qualidade-de-código)
+- [Licença](#licença)
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Funcionalidades
 
-## Learning Laravel
+- Cadastro e autenticação de usuários via token (Sanctum).
+- Criação de shortlinks a partir de uma URL válida, com código curto gerado automaticamente.
+- Listagem paginada dos shortlinks do usuário autenticado.
+- Desativação (soft-disable) de shortlinks.
+- Redirecionamento público (`GET /api/shortlink/{short_url}`) com contagem de cliques e bloqueio de links desativados.
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+## Stack
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+| Camada              | Tecnologia                                     |
+| ------------------- | ---------------------------------------------- |
+| Linguagem           | PHP ^8.1                                       |
+| Framework           | Laravel ^10.10                                 |
+| Autenticação        | Laravel Sanctum ^3.3                           |
+| Banco de dados      | MySQL (SQLite em memória nos testes)           |
+| Cache / Filas       | Redis (configurado, ver [nota abaixo](#redis)) |
+| Testes              | PHPUnit ^10.1                                  |
+| Qualidade de código | Laravel Pint                                   |
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+### Redis
 
-## Laravel Sponsors
+O projeto já traz uma conexão Redis totalmente configurada em `config/database.php` (bancos `default` e `cache`, via `phpredis`), incluindo opções de contexto TLS para uso com provedores gerenciados. Porém, nos drivers padrão do `.env.example` (`CACHE_DRIVER`, `SESSION_DRIVER`, `QUEUE_CONNECTION`) o Redis **ainda não está ativo** e não há chamadas a `Cache::`/`Redis::` no código da aplicação — a infraestrutura está pronta para uma futura camada de cache (por exemplo, cache do redirecionamento de shortlinks), mas ainda não é usada.
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+## Arquitetura e estrutura do projeto
 
-### Premium Partners
+Projeto Laravel padrão, organizado por responsabilidade:
 
-- **[Vehikl](https://vehikl.com/)**
-- **[Tighten Co.](https://tighten.co)**
-- **[WebReinvent](https://webreinvent.com/)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel/)**
-- **[Cyber-Duck](https://cyber-duck.co.uk)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Jump24](https://jump24.co.uk)**
-- **[Redberry](https://redberry.international/laravel/)**
-- **[Active Logic](https://activelogic.com)**
-- **[byte5](https://byte5.de)**
-- **[OP.GG](https://op.gg)**
+```
+app/
+├── Http/
+│   ├── Controllers/Api/
+│   │   ├── AuthController.php        # login e registro
+│   │   └── ShortlinkController.php   # CRUD e redirecionamento de shortlinks
+│   ├── Requests/
+│   │   └── ShortlinkRequest.php      # validação de criação de shortlink
+│   └── Resources/
+│       └── ShortlinkResource.php     # formatação da resposta JSON
+├── Models/
+│   ├── ShortLink.php
+│   └── User.php
+database/
+├── factories/                        # factories para testes (User, ShortLink)
+└── migrations/                       # schema do banco (users, sanctum, short_links)
+routes/
+└── api.php                           # definição das rotas da API
+tests/
+└── Feature/Api/
+    ├── AuthControllerTest.php
+    └── ShortlinkControllerTest.php
+```
 
-## Contributing
+## Modelo de dados
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+Tabela `short_links`:
 
-## Code of Conduct
+| Coluna                      | Tipo           | Descrição                                    |
+| --------------------------- | -------------- | -------------------------------------------- |
+| `id`                        | bigint         | Identificador                                |
+| `user_id`                   | bigint (FK)    | Dono do shortlink                            |
+| `url`                       | string         | URL de destino original                      |
+| `short_url`                 | string (único) | Código curto gerado                          |
+| `clicks`                    | integer        | Contador de acessos (default `0`)            |
+| `is_active`                 | boolean        | Se o link ainda redireciona (default `true`) |
+| `created_at` / `updated_at` | timestamp      | Controle de datas                            |
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## Pré-requisitos
 
-## Security Vulnerabilities
+- PHP ^8.1 com as extensões padrão do Laravel
+- Composer
+- MySQL (ou outro banco compatível) para o ambiente de desenvolvimento
+- Node.js e npm (opcional, apenas para os assets padrão do Laravel — o projeto é API-only e não exige build de frontend)
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+## Instalação
 
-## License
+```bash
+# clone o repositório
+git clone <url-do-repositorio>
+cd shortlink-api
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+# instale as dependências PHP
+composer install
+
+# copie o arquivo de ambiente
+cp .env.example .env
+
+# gere a chave da aplicação
+php artisan key:generate
+```
+
+## Variáveis de ambiente
+
+Configure o `.env` com as credenciais do seu banco de dados. As principais variáveis para este projeto são:
+
+```env
+APP_NAME=Shortlink
+APP_URL=http://localhost
+
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=shortlink
+DB_USERNAME=root
+DB_PASSWORD=
+
+REDIS_HOST=127.0.0.1
+REDIS_PASSWORD=null
+REDIS_PORT=6379
+```
+
+> `APP_URL` é usada para montar a URL completa retornada em `short_url` (ex.: `http://localhost/AbCdEfGh`).
+
+## Executando a aplicação
+
+```bash
+# rode as migrations
+php artisan migrate
+
+# suba o servidor de desenvolvimento
+php artisan serve
+```
+
+A API ficará disponível em `http://localhost:8000` (ou na `APP_URL` configurada).
+
+## Documentação da API
+
+Todas as rotas são prefixadas com `/api`. Rotas marcadas como **autenticadas** exigem um header `Authorization: Bearer <token>` obtido no login.
+
+### Autenticação
+
+#### `POST /api/auth/register`
+
+Cria um novo usuário.
+
+**Body**
+
+```json
+{
+    "name": "Fulano",
+    "email": "fulano@email.com",
+    "password": "senha-segura"
+}
+```
+
+**Resposta `201`**
+
+```json
+{ "message": "Register success" }
+```
+
+#### `POST /api/auth/login`
+
+Autentica um usuário e retorna um token de acesso.
+
+**Body**
+
+```json
+{
+    "email": "fulano@email.com",
+    "password": "senha-segura"
+}
+```
+
+**Resposta `200`**
+
+```json
+{ "token": "1|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" }
+```
+
+**Resposta `401`**
+
+```json
+{ "message": "Invalid credentials" }
+```
+
+### Shortlinks
+
+#### `GET /api/shortlink` 🔒
+
+Lista, de forma paginada, os shortlinks pertencentes ao usuário autenticado.
+
+**Resposta `200`**
+
+```json
+{
+    "data": [
+        {
+            "id": 1,
+            "url": "https://google.com",
+            "short_url": "http://localhost/AbCdEfGh",
+            "clicks": 0,
+            "is_active": true,
+            "created_at": "2 minutes ago"
+        }
+    ],
+    "links": { "...": "..." },
+    "meta": { "...": "..." }
+}
+```
+
+#### `POST /api/shortlink` 🔒
+
+Cria um novo shortlink a partir de uma URL válida.
+
+**Body**
+
+```json
+{ "url": "https://google.com" }
+```
+
+**Resposta `201`**
+
+```json
+{
+    "data": {
+        "id": 1,
+        "url": "https://google.com",
+        "short_url": "http://localhost/AbCdEfGh",
+        "clicks": 0,
+        "is_active": true,
+        "created_at": "a few seconds ago"
+    }
+}
+```
+
+#### `GET /api/shortlink/{short_url}`
+
+Rota pública de redirecionamento. Busca o shortlink pelo código, incrementa o contador de `clicks` e redireciona (`302`) para a URL original.
+
+**Resposta**
+
+- `302` → `Location: <url original>`
+- `404` → link inexistente ou desativado
+
+#### `DELETE /api/shortlink/{shortLink}` 🔒
+
+Desativa (soft-disable) um shortlink — o registro não é removido do banco, apenas marcado como `is_active = false` e passa a responder `404` no redirecionamento.
+
+**Resposta**
+
+- `204 No Content`
+
+> 🔒 = requer autenticação via Sanctum.
+
+## Testes
+
+O projeto usa PHPUnit com banco SQLite em memória (`phpunit.xml`), cobrindo os fluxos de autenticação e de shortlinks (criação, listagem paginada, redirecionamento com incremento de cliques, bloqueio de links desativados e desativação).
+
+```bash
+php artisan test
+# ou
+./vendor/bin/phpunit
+```
+
+## Qualidade de código
+
+O projeto usa [Laravel Pint](https://laravel.com/docs/10.x/pint) para padronização de estilo:
+
+```bash
+./vendor/bin/pint
+```
+
+## Licença
+
+Este projeto está licenciado sob os termos da licença MIT (conforme declarado em `composer.json`).
